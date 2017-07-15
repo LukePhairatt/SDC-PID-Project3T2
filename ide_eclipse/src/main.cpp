@@ -9,23 +9,21 @@ typedef std::chrono::high_resolution_clock Clock;
 
 
 // PID twiddle tune setting
+// change pidTuning to true if you want to run twiddle pid search
 const bool pidTuning = false;
 int n_try_tuning = 0;
 double eps_tuning = 0.0;
-const double Kp_tw = 0.10;
-const double Kd_tw = 0.65;
-const double Ki_tw = 0.002;
+const double Kp_tw = 0.05;
+const double Kd_tw = 0.05;
+const double Ki_tw = 0.001;
 
-// bench mark quick 30-35 mph 0.15,0.55,0.001 (0.17,0.60,0.002)
-// bench mark slow 15 mph 0.08, 0.37, 0.001 fairly smooth 
-// adjusting gain for smooth vs responsiveness
-// twiddle tuning give out (0.09 0.76 0.001) from 0.1, 0.65, 0.002 initial
-// final 0.12, 0.45, 0.003
-const double Kp_s = 0.12;//0.237;
-const double Kd_s = 0.45;//1.025;
-const double Ki_s = 0.0025;//0.005;
+// pid steering
+const double Kp_s = 0.12;
+const double Kd_s = 0.05;
+const double Ki_s = 0.002;
 
-// bench mark 0.05,0.80,0.001
+
+// pid throttle
 const double Kp_t = 0.100;
 const double Kd_t = 0.900;
 const double Ki_t = 0.001;
@@ -33,12 +31,12 @@ const double Ki_t = 0.001;
 // max output limit
 const double max_steering =  1.0;   // max output steering (radian)
 const double min_steering = -1.0;   // min
-const double max_throttle =  0.3;  // max output throttle (mph): acceleration
+const double max_throttle =  0.3;   // max output throttle (mph): acceleration
 const double min_throttle =  0.0;   // min (no brake, just lift off the throttle)
 
 // running speed
-enum speed_mph {SPEED_1=20, SPEED_2=25, SPEED_3=30};
-double run_speed = static_cast<double>(speed_mph::SPEED_3);
+enum speed_mph {SPEED_1=15, SPEED_2=20, SPEED_3=30};
+double run_speed = static_cast<double>(speed_mph::SPEED_1);
 
 
 // for convenience
@@ -104,82 +102,92 @@ int main()
           double throttle;
 
           new_msg = Clock::now();
-          double duration = std::chrono::duration_cast<std::chrono::milliseconds>(new_msg - old_msg).count();
+          double dt = (std::chrono::duration_cast<std::chrono::milliseconds>(new_msg - old_msg).count())/1000.0;
           old_msg = new_msg;
-          //std::cout << "dt: " << duration << std::endl;
+          std::cout << "dt: " << dt << std::endl; 
+          
+          // pid running time step
+          if(dt > 0.01)
+          {
+			  /* -------------*/
+			  /* Steering PID */
+			  /* -------------*/
+			  // update pid error
+			  pid_steering.UpdateError(cte, dt);
+			  // compute steering output
+			  steer_value = pid_steering.TotalError();
+			  // limit angle to e.g. [-1,1] radian about 60 degrees
+			  if(steer_value > max_steering){
+				steer_value = max_steering;
+			  }
+			  else if(steer_value < min_steering){
+				steer_value = min_steering;
+			  }
 
-          /* -------------*/
-          /* Steering PID */
-          /* -------------*/
-          // update pid error
-          pid_steering.UpdateError(cte);
-          // compute steering output
-          steer_value = pid_steering.TotalError();
-          // limit angle to e.g. [-1,1] radian about 60 degrees
-          if(steer_value > max_steering){
-            steer_value = max_steering;
-          }
-          else if(steer_value < min_steering){
-            steer_value = min_steering;
-          }
-
-          //std::cout << "run loop : " << counter << std::endl;
-          counter++;
-
-
-          /* --------------*/
-          /*    Speed PID  */
-          /* --------------*/
+			  //std::cout << "run loop : " << counter << std::endl;
+			  counter++;
 
 
-          // 1- set target speed cruise to X mph- use pid to maintain output throttle
-          //    note: without this, the speed may go beyond 30 mph, problem during cornering
-          //    simply set low target speed and control it with throttle pid
-          //    this method is easy to work with
-          //    if cte > 0.3, it is time to reduce speed
-          double set_speed;                                			// mph
-          counter < 200?set_speed = 15.0:set_speed = run_speed; 	// start slow (let pid to settle a bit) or using cte to check
-          const double speed_err = speed - set_speed;      			// speed error
-          // update pid error
-          pid_speed.UpdateError(speed_err);
-          // compute steering output
-          throttle = pid_speed.TotalError();
-          // limit throttle to 0.35 max gas input (higher the faster to get up to speed but overshot may happen)
-          if(throttle > max_throttle){
-            throttle = max_throttle;
-          }
-          else if(throttle < min_throttle){
-        	  throttle = min_throttle;
-          }
+			  /* --------------*/
+			  /*    Speed PID  */
+			  /* --------------*/
 
-          // about to swing at high speed error- no more speed please
-          if(fabs(cte) > 0.3 && speed > 30.00) {
-        	  throttle = 0.0;
-          }
 
-          // PID Tuning Twiddle:
-          if(pidTuning){
-        	 std::vector<double> kpid;
-             eps_tuning = pid_steering.dp[0]+pid_steering.dp[1]+pid_steering.dp[2];
-            // set how many times to run e.g. 10 tries or until dp doesn't change any more
-        	if(pid_steering.twiddle_n < 10 and eps_tuning > 0.00001){
-              kpid = pid_steering.TunePIDTwiddle(cte);
-        	}
-        	else
-        	{
-        	  std::cout << "Done tuning Kp,Kd,Ki =  " << std::endl;
-        	  std::cout << pid_steering.Kp  << std::endl;
-        	  std::cout << pid_steering.Kd  << std::endl;
-        	  std::cout << pid_steering.Ki  << std::endl;
-        	}
+			  // 1- set target speed cruise to X mph- use pid to maintain output throttle
+			  //    note: without this, the speed may go beyond 30 mph, problem during cornering
+			  //    simply set low target speed and control it with throttle pid
+			  //    this method is easy to work with
+			  //    if cte > 0.3, it is time to reduce speed
+			  double set_speed;                                			// mph
+			  counter < 200?set_speed = 15.0:set_speed = run_speed; 	// start slow (let pid to settle a bit) or using cte to check
+			  const double speed_err = speed - set_speed;      			// speed error
+			  // update pid error
+			  pid_speed.UpdateError(speed_err, dt);
+			  // compute steering output
+			  throttle = pid_speed.TotalError();
+			  // limit throttle to 0.35 max gas input (higher the faster to get up to speed but overshot may happen)
+			  if(throttle > max_throttle){
+				throttle = max_throttle;
+			  }
+			  else if(throttle < min_throttle){
+				  throttle = min_throttle;
+			  }
 
-          }
+			  // about to swing at high speed error- no more speed please
+			  if(fabs(cte) > 0.3 && speed > 30.00) {
+				  throttle = 0.0;
+			  }
+
+			  // PID Tuning Twiddle:
+			  if(pidTuning){
+				 std::vector<double> kpid;
+				 eps_tuning = pid_steering.dp[0]+pid_steering.dp[1]+pid_steering.dp[2];
+				// set how many times to run e.g. 10 tries or until dp doesn't change any more
+				if(pid_steering.twiddle_n < 10 and eps_tuning > 0.00001){
+				  kpid = pid_steering.TunePIDTwiddle(cte);
+				}
+				else
+				{
+				  std::cout << "Done tuning Kp,Kd,Ki =  " << std::endl;
+				  std::cout << pid_steering.Kp  << std::endl;
+				  std::cout << pid_steering.Kd  << std::endl;
+				  std::cout << pid_steering.Ki  << std::endl;
+				}
+
+			  }
+			  
+		  }
+		  else
+		  {
+		    throttle = 0.0;
+		    steer_value = 0.0;	  
+		  }	  
 
           // DEBUG- speed
           //std::cout << "throttle: " << throttle << " speed: " << speed << std::endl;
 
           // DEBUG- steering
-          //std::cout << "CTE: " << cte << " Current steering: " << angle << " Cmd Steering: " << steer_value << std::endl;
+          std::cout << "CTE: " << cte << " Current steering: " << angle << " Cmd Steering: " << steer_value << std::endl;
 
           json msgJson;
           msgJson["steering_angle"] = steer_value;
@@ -187,7 +195,7 @@ int main()
           auto msg = "42[\"steer\"," + msgJson.dump() + "]";
 
           // DEBUD- msg
-          std::cout << msg << std::endl;
+          //std::cout << msg << std::endl;
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
         }
       } else {

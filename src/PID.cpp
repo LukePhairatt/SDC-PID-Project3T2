@@ -24,8 +24,8 @@ void PID::Init(double Kp, double Ki, double Kd, double MaxLimit, double MinLimit
   PID::p = {PID::Kp, PID::Kd, PID::Ki};    //note: Kp, Kd, Ki
 }
 
-void PID::UpdateError(double cte) {
-  d_error = cte - p_error;
+void PID::UpdateError(double cte, double dt) {
+  d_error = (cte - p_error)/dt;
   i_error += cte;
   p_error = cte;
 }
