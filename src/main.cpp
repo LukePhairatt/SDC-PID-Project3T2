@@ -25,7 +25,7 @@ const double Ki_s = 0.002;
 
 // pid throttle
 const double Kp_t = 0.100;
-const double Kd_t = 0.900;
+const double Kd_t = 0.100;
 const double Ki_t = 0.001;
 
 // max output limit
@@ -88,10 +88,12 @@ int main()
     if (length && length > 2 && data[0] == '4' && data[1] == '2')
     {
       auto s = hasData(std::string(data).substr(0, length));
-      if (s != "") {
+      if (s != "") 
+      {
         auto j = json::parse(s);
         std::string event = j[0].get<std::string>();
-        if (event == "telemetry") {
+        if (event == "telemetry") 
+        {
           // j[1] is the data JSON object
           double cte = std::stod(j[1]["cte"].get<std::string>());
           double speed = std::stod(j[1]["speed"].get<std::string>());
@@ -108,7 +110,8 @@ int main()
           
           // pid running time step
           if(dt > 0.01)
-          {
+          {  
+	
 			  /* -------------*/
 			  /* Steering PID */
 			  /* -------------*/
@@ -131,8 +134,6 @@ int main()
 			  /* --------------*/
 			  /*    Speed PID  */
 			  /* --------------*/
-
-
 			  // 1- set target speed cruise to X mph- use pid to maintain output throttle
 			  //    note: without this, the speed may go beyond 30 mph, problem during cornering
 			  //    simply set low target speed and control it with throttle pid
@@ -157,54 +158,57 @@ int main()
 			  if(fabs(cte) > 0.3 && speed > 30.00) {
 				  throttle = 0.0;
 			  }
-
+			  
+              //
 			  // PID Tuning Twiddle:
+			  //
 			  if(pidTuning){
 				 std::vector<double> kpid;
 				 eps_tuning = pid_steering.dp[0]+pid_steering.dp[1]+pid_steering.dp[2];
-				// set how many times to run e.g. 10 tries or until dp doesn't change any more
-				if(pid_steering.twiddle_n < 10 and eps_tuning > 0.00001){
-				  kpid = pid_steering.TunePIDTwiddle(cte);
-				}
-				else
-				{
-				  std::cout << "Done tuning Kp,Kd,Ki =  " << std::endl;
-				  std::cout << pid_steering.Kp  << std::endl;
-				  std::cout << pid_steering.Kd  << std::endl;
-				  std::cout << pid_steering.Ki  << std::endl;
-				}
+				 // set how many times to run e.g. 10 tries or until dp doesn't change any more
+				 if(pid_steering.twiddle_n < 10 and eps_tuning > 0.00001){
+					kpid = pid_steering.TunePIDTwiddle(cte);
+				 }
+				 else
+				 {
+				    std::cout << "Done tuning Kp,Kd,Ki =  " << std::endl;
+					std::cout << pid_steering.Kp  << std::endl;
+					std::cout << pid_steering.Kd  << std::endl;
+					std::cout << pid_steering.Ki  << std::endl;
+				 }
 
-			  }
-			  
-		  }
-		  else
-		  {
-		    throttle = 0.0;
-		    steer_value = 0.0;	  
-		  }	  
+		      }// end pid tuning
 
-          // DEBUG- speed
-          //std::cout << "throttle: " << throttle << " speed: " << speed << std::endl;
+              // DEBUG- speed
+              //std::cout << "throttle: " << throttle << " speed: " << speed << std::endl;
 
-          // DEBUG- steering
-          std::cout << "CTE: " << cte << " Current steering: " << angle << " Cmd Steering: " << steer_value << std::endl;
+              // DEBUG- steering
+              std::cout << "CTE: " << cte << " Current steering: " << angle << " Cmd Steering: " << steer_value << std::endl;
 
-          json msgJson;
-          msgJson["steering_angle"] = steer_value;
-          msgJson["throttle"] = throttle;
-          auto msg = "42[\"steer\"," + msgJson.dump() + "]";
+              json msgJson;
+              msgJson["steering_angle"] = steer_value;
+              msgJson["throttle"] = throttle;
+              auto msg = "42[\"steer\"," + msgJson.dump() + "]";
 
-          // DEBUD- msg
-          //std::cout << msg << std::endl;
-          ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
-        }
-      } else {
+              // DEBUD- msg
+              //std::cout << msg << std::endl;
+              ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
+              
+
+	 	    
+          } // if dt > 0
+          
+        }// end if message telemetry
+      
+      } // end if message " "
+      else {
         // Manual driving
         std::string msg = "42[\"manual\",{}]";
         ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
-      }
+      }// end else message manual
+      
     }
-  });
+  });// end on message
 
   // We don't need this since we're not using HTTP but if it's removed the program
   // doesn't compile :-(
