@@ -115,6 +115,9 @@ int main()
 			  /* -------------*/
 			  /* Steering PID */
 			  /* -------------*/
+			  // output is a already steering angle used directly by the simulator 
+			  // not the control signal strength for a machine control
+			  
 			  // update pid error
 			  pid_steering.UpdateError(cte, dt);
 			  // compute steering output
